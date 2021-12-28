@@ -1,0 +1,41 @@
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+import seaborn as sns
+import datetime
+
+
+# In[128]:
+
+
+df = pd.read_csv(r'C:\Users\coakl\Downloads\nation_2021-12-13.csv')
+print(df.head())
+print(df.describe())
+print(df.info)
+print(df.isnull().sum())
+print(df.count())
+print(df.shape)
+
+df.sort_values(by=['date'],inplace=True)
+ax = df.plot(x='date',kind='line', subplots=True, grid=True, title='COVID data by day (frequency)',
+        layout=(4,1), sharex=True, sharey=False, legend=True,
+        style=['r','g','b','y'],figsize=(22,20))
+        
+def myfunction(code, date):
+    url = f'https://api.coronavirus.data.gov.uk/v2/data?areaType=nhsRegion&areaCode={code}&metric=transmissionRateMax&metric=transmissionRateMin&format=csv&release={date}'
+    try:
+        imported=pd.read_csv(url)
+        imported.sort_values(by=['date'], inplace=True)
+        print(imported.head())
+        plt.figure(figsize=(20,10)) 
+        plt.plot(imported['date'],imported['transmissionRateMax'])
+        plt.plot(imported['date'],imported['transmissionRateMin'])
+        plt.xticks(rotation=90)
+        
+        
+        return imported
+    except: 
+        return 'Not a valid NHS code or the date is out of the range. Please use the format A00000000 and YYYY-MM-DD. This error means that the dataframe comes back as empty and is therefore not a used URL.'
+    
+myfunction('E40000010','2021-02-26')
+myfunction('E40000005','2021-02-26')
