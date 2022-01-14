@@ -1,41 +1,191 @@
 import numpy as np
 import pandas as pd
+import matplotlib
 from matplotlib import pyplot as plt
 import seaborn as sns
 import datetime
+import re
 
-
-# In[128]:
-
-
-df = pd.read_csv(r'C:\Users\coakl\Downloads\nation_2021-12-13.csv')
+df = pd.read_csv('nation_2021-12-13.csv')
 print(df.head())
-print(df.describe())
-print(df.info)
-print(df.isnull().sum())
-print(df.count())
-print(df.shape)
+print('\n Description: \n', df.describe())
+print('\n Info: \n', df.info)
+print('\n Totals: \n', df.count())
+print('\n Data Shape: \n', df.shape)
+print('\n NaN values: \n', df.isna().sum())
 
+dfadmissdate = df[['date', 'newAdmissions']].dropna(subset=['newAdmissions'])
+print('\n Date-range for new admissions: \n', dfadmissdate.iloc[[0,-1]])
+
+dfcasesbypublishdate = df[['date', 'newCasesByPublishDate']].dropna(subset=['newCasesByPublishDate'])
+print('\n Date-range for new cases by publish date: \n', dfcasesbypublishdate.iloc[[0,-1]])
+
+dfseconddose = df[['date', 'newPeopleVaccinatedSecondDoseByPublishDate']].dropna(subset=['newPeopleVaccinatedSecondDoseByPublishDate'])
+print('\n Date-range for new people vaccinated second dose: ', dfseconddose.iloc[[0,-1]])
+
+dftests = df[['date', 'newTestsByPublishDate']].dropna(subset=['newTestsByPublishDate'])
+print('\n Date-range for new tests by publish date: \n', dftests.iloc[[0,-1]])
+
+#create a daily plot
+matplotlib.style.use('ggplot')
 df.sort_values(by=['date'],inplace=True)
-ax = df.plot(x='date',kind='line', subplots=True, grid=True, title='COVID data by day (frequency)',
+ax = df.plot(x='date',kind='line', subplots=True, grid=True,
         layout=(4,1), sharex=True, sharey=False, legend=True,
-        style=['r','g','b','y'],figsize=(22,20))
-        
+        style=['r','g','b','y'],figsize=(22,20),title='COVID data daily plot of variable frequency')
+fig=ax[0,0].figure
+
+#adding a shared label to the y-axis 
+fig.text(0.05,0.5, "Frequency", ha="center", va="center", rotation=90)
+
+
+#setting a style for the plots - this one has a grey tone
+matplotlib.style.use('ggplot')
+
+#creating a monthly plot
+#making a dataframe with the desired date format 
+dfs=df.copy()
+monthly = pd.to_datetime(dfs['date']).dt.strftime('%Y-%m')
+dfs['date'] = monthly
+dfs=dfs.groupby('date').sum()
+dfs.reset_index(level=0,inplace=True)
+
+#plotted together
+ax2 = dfs.plot(x='date',figsize=(15,10),title='Monthly plot of all variables together')
+ax2.set_xlabel('Date')
+ax2.set_ylabel('Frequency')
+
+#plotting the two hard to determine variables on their own
+ax3 = dfs[['date','newAdmissions','newCasesByPublishDate']].plot(title='Monthly plot of New Admissions vs New Cases by Publish Date',
+                                                                 x='date',figsize=(15,10))
+ax3.set_xlabel('Date')
+ax3.set_ylabel('Frequency')
+
+#create function to compare R rates of two regions taking data from URL and plotting
+#defining the function and providing it with the url - this method uses an f string in order to insert the desired 
+#practice code and dates
+
 def myfunction(code, date):
     url = f'https://api.coronavirus.data.gov.uk/v2/data?areaType=nhsRegion&areaCode={code}&metric=transmissionRateMax&metric=transmissionRateMin&format=csv&release={date}'
     try:
         imported=pd.read_csv(url)
         imported.sort_values(by=['date'], inplace=True)
-        print(imported.head())
-        plt.figure(figsize=(20,10)) 
+#line for maximum rate and setting a title and figure size as well as axis labels    
+        plt.figure(figsize=(18,9)) 
         plt.plot(imported['date'],imported['transmissionRateMax'])
+        plt.xlabel('Date')
+        plt.ylabel('R vale')
+        plt.title(f'Plot showing transmission rate over time for region {code}')
+        matplotlib.style.use('ggplot')
+# line for minimum rate and setting the xticks labels to a readable 90 degrees       
         plt.plot(imported['date'],imported['transmissionRateMin'])
         plt.xticks(rotation=90)
+        plt.xlabel('Date')
+        plt.ylabel('R vale')
+        matplotlib.style.use('ggplot')
         
-        
+               
         return imported
+#if the function cannot return a plot then the following erorr will show 
     except: 
         return 'Not a valid NHS code or the date is out of the range. Please use the format A00000000 and YYYY-MM-DD. This error means that the dataframe comes back as empty and is therefore not a used URL.'
-    
+
+#running the function with the desired regions and date
 myfunction('E40000010','2021-02-26')
 myfunction('E40000005','2021-02-26')
+
+#find the top six london practices for children
+#read the csv to a pandas dataframe
+df2 = pd.read_csv('./dental/nhs-dent-stat-eng-jan-jun-21-anx3-ps-prac.csv')
+print(df2.dropna(subset=['PRACTICE_CODE']).head(3))
+
+#isolate required columns as a new df
+londonchild = df2[['REGION_NAME',
+                   'PATIENT_TYPE',
+                   'PSEEN_END_DATE',
+                   'PATIENTS_SEEN',
+                   'PRACTICE_NAME']][(df2['REGION_NAME']=='London') & (df2['PATIENT_TYPE']=='Child') & (df2['PSEEN_END_DATE']=='2021-06-30')]
+#group by practice name and their total patients seen, show the top six results
+plot1 = londonchild.groupby('PRACTICE_NAME')['PATIENTS_SEEN'].sum().sort_values(ascending=False).head(6).dropna()
+#visualise this result
+ax9=plot1.plot(kind='bar',figsize=(10,8))
+plt.xlabel('Practice Name')
+plt.ylabel('Children Seen')
+
+#cutting out unneeded bottom 4000 of y-axis
+ax9.set_ylim(4000,10000)
+
+#creating a table showing total practices, children and adults per region 
+
+#create a new dataframe from the read file to only show the desired date and drop any NaN practice codes
+#proceed to create a dataframe from this with only children as patient type and group these into regions and count
+#their totals
+dfjun = df2[(df2['PSEEN_END_DATE']=='2021-06-30')].dropna(subset=['PRACTICE_CODE'])
+child_region = dfjun[(df2['PATIENT_TYPE'] == 'Child')].groupby(['REGION_NAME'])['PATIENTS_SEEN'].sum()
+
+#find number of practices
+practice_region = dfjun.groupby(['REGION_NAME'])['PRACTICE_CODE'].nunique()
+
+#calculate average child per region
+average_child_region = child_region/practice_region
+
+#repeat this for adults, join together both dfs and show a table with the results
+adult_region = dfjun[(df2['PATIENT_TYPE'] == 'Adult')].groupby(['REGION_NAME'])['PATIENTS_SEEN'].sum()
+average_adult_region = adult_region/practice_region
+table = pd.concat([practice_region,average_adult_region,average_child_region],axis=1)
+table.columns = ['Practices','Adults', 'Children']
+print('Table showing total number of practices per region as well as adults and children per region',table)
+table
+
+#creating a function that takes practice code and reporting period end date as inputs
+#and provides a pie chart showing patient distribution by age group
+#set a new dataframe to contain the required columns
+
+def pie(prac_code,end_date):
+#make a new dataframe showing only the values where date and code are the same as those entered into the function
+#and sort them by age band
+    pie_band = df2.loc[(df2['PSEEN_END_DATE']==end_date)
+                     & (df2['PRACTICE_CODE']==prac_code)].sort_values('AGE_BAND')
+    pie_band['AGE_BAND'] = pie_band['AGE_BAND'].astype(str)
+#group this df by patients seen and enter it into a new df, though an inplace solution also exists    
+    pie_data = pie_band.groupby(['AGE_BAND'])['PATIENTS_SEEN'].sum()
+    
+    patients_seen = pie_band['PATIENTS_SEEN'].sum()
+
+#plot the chart   
+    
+    plot = pie_data.plot(kind='pie',
+                         title='Practice name: ' + pie_band.loc[(pie_band['PRACTICE_CODE'] == prac_code)]['PRACTICE_NAME'].any() + ' Total Patients: ' + str(patients_seen) + '\nAge-bands represented on pie as area',
+                         figsize = (18,18),autopct='%1.0f%%',fontsize=8.5,explode=(0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07))
+    plt.legend(labels=pie_band['AGE_BAND'],loc="best")
+    
+    return(plot)
+
+pie('V00003','2021-06-30')
+
+#first create a list of the files
+files = ['./dental/nhs-dent-stat-eng-jan-jun-20-anx3-ps-prac.csv',
+            './dental/nhs-dent-stat-eng-jul-dec-20-anx3-ps-prac.csv',
+            './dental/nhs-dent-stat-eng-jan-jun-21-anx3-ps-prac.csv']
+#define an empty df
+df3 = pd.DataFrame()
+#the following loop will read a csv and ensure that it has the correct date format and column name and add to the df
+#then it will do the same for the next two files in the list
+for file in files:
+    file = pd.read_csv(file)
+    file['PSEEN_END_DATE'] = pd.to_datetime(file['PSEEN_END_DATE'])
+    if 'GEOG_TYPE' in file:
+        file = file.rename(columns={'GEOG_TYPE':'GEOTYPE'})
+    df3 = pd.concat([df3,file], ignore_index = True)
+print('Obs: ', len(df3.index))
+print('Prac N: ', df3['PRACTICE_CODE'].nunique())
+
+#a new dataframe created with only adults in london
+dfadult = df3[(df3['PATIENT_TYPE'] == 'Adult')]
+dflondon = dfadult[(dfadult['REGION_NAME'] == 'London')].dropna(subset = ['PRACTICE_CODE'])
+
+#plot by date and remove uneeded column
+dfdate = dflondon.groupby('PSEEN_END_DATE').sum()
+dfplot = dfdate.drop(['POPULATION'],axis=1)
+total_seen = dfplot.plot(kind = 'line',figsize=(15,9))
+total_seen.set_xlabel('Date')
+total_seen.set_ylabel('Patients Seen')
